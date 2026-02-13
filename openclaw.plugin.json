@@ -1,0 +1,81 @@
+{
+  "id": "openclaw-evermemos",
+  "kind": "memory",
+  "uiHints": {
+    "baseUrl": {
+      "label": "EverMemOS Server URL",
+      "placeholder": "http://localhost:1995",
+      "help": "Base URL of your EverMemOS server (supports ${EVERMEMOS_BASE_URL})"
+    },
+    "userId": {
+      "label": "Default User ID",
+      "placeholder": "default",
+      "help": "User ID for scoping memories"
+    },
+    "groupId": {
+      "label": "Default Group ID",
+      "placeholder": "",
+      "help": "Optional group ID for scoping memories to a specific group",
+      "advanced": true
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "help": "Automatically store conversation context after each agent turn"
+    },
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Automatically inject relevant memories before each agent turn"
+    },
+    "retrieveMethod": {
+      "label": "Retrieval Method",
+      "help": "How to retrieve memories: keyword (BM25), vector (semantic), hybrid, rrf, or agentic",
+      "advanced": true
+    },
+    "memoryTypes": {
+      "label": "Memory Types",
+      "help": "Which memory types to retrieve: episodic_memory, foresight, event_log, profile",
+      "advanced": true
+    },
+    "topK": {
+      "label": "Top K Results",
+      "placeholder": "10",
+      "help": "Maximum number of memories to retrieve per search"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": {
+        "type": "string"
+      },
+      "userId": {
+        "type": "string"
+      },
+      "groupId": {
+        "type": "string"
+      },
+      "autoCapture": {
+        "type": "boolean"
+      },
+      "autoRecall": {
+        "type": "boolean"
+      },
+      "retrieveMethod": {
+        "type": "string",
+        "enum": ["keyword", "vector", "hybrid", "rrf", "agentic"]
+      },
+      "memoryTypes": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["episodic_memory", "foresight", "event_log", "profile"]
+        }
+      },
+      "topK": {
+        "type": "number"
+      }
+    },
+    "required": []
+  }
+}
