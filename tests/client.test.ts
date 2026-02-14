@@ -211,8 +211,8 @@ describe("EverMemOSClient", () => {
       mockFetch.mockResolvedValueOnce(
         mockResponse({
           status: "ok",
-          message: "Deleted 1 memories",
-          result: { deleted_count: 1 },
+          message: "Successfully deleted 1 memories",
+          result: { filters: ["user_id", "event_id"], count: 1 },
         }),
       );
 
@@ -221,7 +221,8 @@ describe("EverMemOSClient", () => {
         event_id: "event_001",
       });
 
-      expect(result.result.deleted_count).toBe(1);
+      expect(result.result.count).toBe(1);
+      expect(result.result.filters).toEqual(["user_id", "event_id"]);
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:1995/api/v1/memories",
         expect.objectContaining({ method: "DELETE" }),
