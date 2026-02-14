@@ -243,6 +243,9 @@ function flattenSearchResults(
 }
 
 /** Generate a unique message ID */
+
+/** Minimum text length to capture (skip very short messages) */
+const MIN_CAPTURE_TEXT_LENGTH = 10;
 function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -814,18 +817,11 @@ const evermemosPlugin = {
     // Lifecycle Hooks
     // ========================================================================
 
-    // Track current session key for scoping
-    let currentSessionKey: string | undefined;
-
     // Auto-recall: inject relevant memories before agent starts
     if (cfg.autoRecall) {
-      api.on("before_agent_start", async (event: unknown, ctx: unknown) => {
+      api.on("before_agent_start", async (event: unknown, _ctx: unknown) => {
         const ev = event as { prompt?: string; messages?: unknown[] };
         if (!ev.prompt || ev.prompt.length < 5) return;
-
-        // Track session key from context
-        const ctxObj = ctx as Record<string, unknown> | undefined;
-        if (ctxObj?.sessionKey) currentSessionKey = ctxObj.sessionKey as string;
 
         try {
           const c = await getClient();
@@ -877,17 +873,13 @@ const evermemosPlugin = {
 
     // Auto-capture: store the last user/assistant turn after agent ends
     if (cfg.autoCapture) {
-      api.on("agent_end", async (event: unknown, ctx: unknown) => {
+      api.on("agent_end", async (event: unknown, _ctx: unknown) => {
         const ev = event as {
           messages?: unknown[];
           success?: boolean;
         };
 
         if (!ev.success || !ev.messages || ev.messages.length === 0) return;
-
-        // Track session key from context
-        const ctxObj = ctx as Record<string, unknown> | undefined;
-        if (ctxObj?.sessionKey) currentSessionKey = ctxObj.sessionKey as string;
 
         try {
           const c = await getClient();
@@ -906,7 +898,7 @@ const evermemosPlugin = {
               break;
             }
           }
-          const lastTurn = lastUserIdx >= 0 ? messages.slice(lastUserIdx) : messages.slice(-2);
+          const lastTurn = lastUserIdx >= 0 ? messages.slice(lastUserIdx) : [];
 
           let capturedCount = 0;
           for (const msg of lastTurn) {
@@ -938,7 +930,7 @@ const evermemosPlugin = {
               }
             }
 
-            if (!textContent || textContent.length < 10) continue;
+            if (!textContent || textContent.length < MIN_CAPTURE_TEXT_LENGTH) continue;
             // Skip injected memory context
             if (textContent.includes("<relevant-memories>")) continue;
 
