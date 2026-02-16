@@ -2,8 +2,8 @@
  * EverMemOS API Client
  *
  * HTTP client for communicating with the EverMemOS REST API.
- * Supports memory storage (POST /api/v1/memories), retrieval (GET /api/v1/memories),
- * search (GET /api/v1/memories/search), and deletion (DELETE /api/v1/memories).
+ * Supports memory storage (POST /memories), retrieval (GET /memories),
+ * search (GET /memories/search), and deletion (DELETE /memories).
  */
 
 // ============================================================================
@@ -12,9 +12,10 @@
 
 export interface EverMemOSClientConfig {
   baseUrl: string;
+  apiKey?: string;
 }
 
-/** POST /api/v1/memories request body */
+/** POST /memories request body */
 export interface MemorizeMessageRequest {
   message_id: string;
   create_time: string;
@@ -27,7 +28,7 @@ export interface MemorizeMessageRequest {
   refer_list?: string[];
 }
 
-/** POST /api/v1/memories response */
+/** POST /memories response */
 export interface MemorizeResponse {
   status: string;
   message: string;
@@ -38,7 +39,7 @@ export interface MemorizeResponse {
   };
 }
 
-/** GET /api/v1/memories request params */
+/** GET /memories request params */
 export interface FetchMemRequest {
   user_id?: string;
   group_id?: string;
@@ -68,7 +69,7 @@ export interface MemoryItem {
   [key: string]: unknown;
 }
 
-/** GET /api/v1/memories response */
+/** GET /memories response */
 export interface FetchMemResponse {
   status: string;
   message: string;
@@ -80,7 +81,7 @@ export interface FetchMemResponse {
   };
 }
 
-/** GET /api/v1/memories/search request params */
+/** GET /memories/search request params */
 export interface RetrieveMemRequest {
   query?: string;
   user_id?: string;
@@ -99,7 +100,7 @@ export interface SearchMemoryGroup {
   [memoryType: string]: MemoryItem[];
 }
 
-/** GET /api/v1/memories/search response */
+/** GET /memories/search response */
 export interface SearchMemResponse {
   status: string;
   message: string;
@@ -113,7 +114,7 @@ export interface SearchMemResponse {
   };
 }
 
-/** DELETE /api/v1/memories request body */
+/** DELETE /memories request body */
 export interface DeleteMemoriesRequest {
   event_id?: string;
   user_id?: string;
@@ -121,7 +122,7 @@ export interface DeleteMemoriesRequest {
   memory_type?: string;
 }
 
-/** DELETE /api/v1/memories response */
+/** DELETE /memories response */
 export interface DeleteMemoriesResponse {
   status: string;
   message: string;
@@ -142,25 +143,56 @@ export interface HealthResponse {
 
 export class EverMemOSClient {
   private baseUrl: string;
+  private apiBaseUrl: string;
+  private healthUrl: string;
+  private apiKey?: string;
 
   constructor(config: EverMemOSClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
+    this.apiKey = config.apiKey;
+
+    const parsed = new URL(this.baseUrl);
+    const apiPathMatch = parsed.pathname.match(/^(.*)\/api\/(v\d+)\/?$/);
+    if (!apiPathMatch) {
+      throw new Error(
+        "EverMemOS baseUrl must include a versioned API path (e.g. http://localhost:1995/api/v1 or https://api.evermind.ai/api/v0)",
+      );
+    }
+
+    const rootPath = apiPathMatch[1].replace(/\/+$/, "");
+    const version = apiPathMatch[2];
+
+    this.apiBaseUrl = `${parsed.origin}${rootPath}/api/${version}`.replace(/\/+$/, "");
+    this.healthUrl = `${parsed.origin}${rootPath}/health`;
+  }
+
+  private buildHeaders(includeJsonContentType = false): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (includeJsonContentType) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (this.apiKey) {
+      headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+    return headers;
   }
 
   /** Check server health */
   async health(): Promise<HealthResponse> {
-    const resp = await fetch(`${this.baseUrl}/health`);
+    const resp = await fetch(this.healthUrl, {
+      headers: this.buildHeaders(),
+    });
     if (!resp.ok) {
       throw new Error(`EverMemOS health check failed: ${resp.status} ${resp.statusText}`);
     }
     return resp.json() as Promise<HealthResponse>;
   }
 
-  /** Store a message into EverMemOS memory (POST /api/v1/memories) */
+  /** Store a message into EverMemOS memory (POST /memories) */
   async memorize(request: MemorizeMessageRequest): Promise<MemorizeResponse> {
-    const resp = await fetch(`${this.baseUrl}/api/v1/memories`, {
+    const resp = await fetch(`${this.apiBaseUrl}/memories`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.buildHeaders(true),
       body: JSON.stringify(request),
     });
     if (!resp.ok) {
@@ -170,7 +202,7 @@ export class EverMemOSClient {
     return resp.json() as Promise<MemorizeResponse>;
   }
 
-  /** Fetch memories from EverMemOS (GET /api/v1/memories) */
+  /** Fetch memories from EverMemOS (GET /memories) */
   async fetchMemories(request: FetchMemRequest): Promise<FetchMemResponse> {
     const params = new URLSearchParams();
     if (request.user_id) params.set("user_id", request.user_id);
@@ -181,7 +213,9 @@ export class EverMemOSClient {
     if (request.start_time) params.set("start_time", request.start_time);
     if (request.end_time) params.set("end_time", request.end_time);
 
-    const resp = await fetch(`${this.baseUrl}/api/v1/memories?${params.toString()}`);
+    const resp = await fetch(`${this.apiBaseUrl}/memories?${params.toString()}`, {
+      headers: this.buildHeaders(),
+    });
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       throw new Error(`EverMemOS fetch failed: ${resp.status} ${resp.statusText} ${text}`);
@@ -189,41 +223,28 @@ export class EverMemOSClient {
     return resp.json() as Promise<FetchMemResponse>;
   }
 
-  /** Search/retrieve memories from EverMemOS (GET /api/v1/memories/search) */
+  /** Search/retrieve memories from EverMemOS (GET /memories/search) */
   async searchMemories(request: RetrieveMemRequest): Promise<SearchMemResponse> {
-    const resp = await fetch(`${this.baseUrl}/api/v1/memories/search`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-    });
-
-    // Some HTTP clients/servers don't support GET with body, fall back to POST-style query
-    if (!resp.ok && resp.status === 405) {
-      return this.searchMemoriesPost(request);
-    }
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(`EverMemOS search failed: ${resp.status} ${resp.statusText} ${text}`);
-    }
-    return resp.json() as Promise<SearchMemResponse>;
-  }
-
-  /** Fallback search using query params */
-  private async searchMemoriesPost(request: RetrieveMemRequest): Promise<SearchMemResponse> {
     const params = new URLSearchParams();
     if (request.query) params.set("query", request.query);
     if (request.user_id) params.set("user_id", request.user_id);
     if (request.group_id) params.set("group_id", request.group_id);
     if (request.top_k != null) params.set("top_k", String(request.top_k));
     if (request.retrieve_method) params.set("retrieve_method", request.retrieve_method);
+    if (request.start_time) params.set("start_time", request.start_time);
+    if (request.end_time) params.set("end_time", request.end_time);
+    if (request.current_time) params.set("current_time", request.current_time);
+    if (request.radius != null) params.set("radius", String(request.radius));
     if (request.memory_types?.length) {
-      for (const mt of request.memory_types) {
-        params.append("memory_types", mt);
+      for (const memoryType of request.memory_types) {
+        params.append("memory_types", memoryType);
       }
     }
 
-    const resp = await fetch(`${this.baseUrl}/api/v1/memories/search?${params.toString()}`);
+    const resp = await fetch(`${this.apiBaseUrl}/memories/search?${params.toString()}`, {
+      headers: this.buildHeaders(),
+    });
+
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       throw new Error(`EverMemOS search failed: ${resp.status} ${resp.statusText} ${text}`);
@@ -231,11 +252,11 @@ export class EverMemOSClient {
     return resp.json() as Promise<SearchMemResponse>;
   }
 
-  /** Delete memories from EverMemOS (DELETE /api/v1/memories) */
+  /** Delete memories from EverMemOS (DELETE /memories) */
   async deleteMemories(request: DeleteMemoriesRequest): Promise<DeleteMemoriesResponse> {
-    const resp = await fetch(`${this.baseUrl}/api/v1/memories`, {
+    const resp = await fetch(`${this.apiBaseUrl}/memories`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: this.buildHeaders(true),
       body: JSON.stringify(request),
     });
     if (!resp.ok) {

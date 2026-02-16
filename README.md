@@ -83,6 +83,10 @@ Add to your `openclaw.json`:
 "openclaw-evermemos": {
   "enabled": true,
   "config": {
+    // Self-hosted: http://localhost:1995/api/v1
+    // Cloud: https://api.evermind.ai/api/v0
+    "baseUrl": "http://localhost:1995/api/v1",
+
     "userId": "your-user-id"
   }
 }
@@ -94,8 +98,14 @@ Add to your `openclaw.json`:
 "openclaw-evermemos": {
   "enabled": true,
   "config": {
-    // EverMemOS server URL (supports ${EVERMEMOS_BASE_URL} env var)
-    "baseUrl": "http://localhost:1995",
+    // EverMemOS API base URL (must include versioned API path, supports ${EVERMEMOS_BASE_URL} env var)
+    // Self-hosted: "http://localhost:1995/api/v1"
+    // Cloud: "https://api.evermind.ai/api/v0"
+    "baseUrl": "http://localhost:1995/api/v1",
+
+    // API key: required for cloud, optional for self-hosted
+    // Supports ${EVERMEMOS_API_KEY} env var
+    "apiKey": "${EVERMEMOS_API_KEY}",
 
     // User ID for scoping memories
     "userId": "your-user-id",
@@ -171,7 +181,8 @@ openclaw evermemos stats
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `baseUrl` | `string` | `http://localhost:1995` | EverMemOS server URL (supports `${EVERMEMOS_BASE_URL}`) |
+| `baseUrl` | `string` | `http://localhost:1995/api/v1` | EverMemOS API URL. Must include `/api/vx` (e.g. `/api/v1` or `/api/v0`) (supports `${EVERMEMOS_BASE_URL}`) |
+| `apiKey` | `string` | — | API key for Bearer auth. Required for cloud, optional for self-hosted (supports `${EVERMEMOS_API_KEY}`) |
 | `userId` | `string` | `"default"` | User ID for scoping memories |
 | `groupId` | `string` | — | Optional group ID for multi-user scenarios |
 | `autoRecall` | `boolean` | `true` | Inject memories before each agent turn |

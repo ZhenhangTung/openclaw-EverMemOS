@@ -9,7 +9,7 @@ import type { SearchMemoryGroup, MemoryItem } from "../src/client.js";
 describe("parseConfig", () => {
   it("should parse minimal config with defaults", () => {
     const cfg = parseConfig({});
-    expect(cfg.baseUrl).toBe("http://localhost:1995");
+    expect(cfg.baseUrl).toBe("http://localhost:1995/api/v1");
     expect(cfg.userId).toBe("default");
     expect(cfg.groupId).toBeUndefined();
     expect(cfg.autoCapture).toBe(true);
@@ -19,9 +19,20 @@ describe("parseConfig", () => {
     expect(cfg.topK).toBe(10);
   });
 
+  it("should parse null and undefined config with defaults", () => {
+    const cfgFromNull = parseConfig(null);
+    expect(cfgFromNull.baseUrl).toBe("http://localhost:1995/api/v1");
+    expect(cfgFromNull.userId).toBe("default");
+
+    const cfgFromUndefined = parseConfig(undefined);
+    expect(cfgFromUndefined.baseUrl).toBe("http://localhost:1995/api/v1");
+    expect(cfgFromUndefined.userId).toBe("default");
+  });
+
   it("should parse full config", () => {
     const cfg = parseConfig({
-      baseUrl: "http://evermemos.example.com:1995",
+      baseUrl: "http://evermemos.example.com:1995/api/v1",
+      apiKey: "test-key",
       userId: "user_123",
       groupId: "group_456",
       autoCapture: false,
@@ -30,7 +41,8 @@ describe("parseConfig", () => {
       memoryTypes: ["episodic_memory", "foresight", "event_log"],
       topK: 20,
     });
-    expect(cfg.baseUrl).toBe("http://evermemos.example.com:1995");
+    expect(cfg.baseUrl).toBe("http://evermemos.example.com:1995/api/v1");
+    expect(cfg.apiKey).toBe("test-key");
     expect(cfg.userId).toBe("user_123");
     expect(cfg.groupId).toBe("group_456");
     expect(cfg.autoCapture).toBe(false);
@@ -41,7 +53,6 @@ describe("parseConfig", () => {
   });
 
   it("should reject invalid config types", () => {
-    expect(() => parseConfig(null)).toThrow("config required");
     expect(() => parseConfig("string")).toThrow("config required");
     expect(() => parseConfig(42)).toThrow("config required");
     expect(() => parseConfig([])).toThrow("config required");
@@ -60,9 +71,9 @@ describe("parseConfig", () => {
   });
 
   it("should resolve env vars in baseUrl", () => {
-    process.env.TEST_EVERMEMOS_URL = "http://test:1995";
+    process.env.TEST_EVERMEMOS_URL = "http://test:1995/api/v1";
     const cfg = parseConfig({ baseUrl: "${TEST_EVERMEMOS_URL}" });
-    expect(cfg.baseUrl).toBe("http://test:1995");
+    expect(cfg.baseUrl).toBe("http://test:1995/api/v1");
     delete process.env.TEST_EVERMEMOS_URL;
   });
 
@@ -74,10 +85,30 @@ describe("parseConfig", () => {
   });
 
   it("should use EVERMEMOS_BASE_URL env var as fallback", () => {
-    process.env.EVERMEMOS_BASE_URL = "http://env-fallback:1995";
+    process.env.EVERMEMOS_BASE_URL = "http://env-fallback:1995/api/v1";
     const cfg = parseConfig({});
-    expect(cfg.baseUrl).toBe("http://env-fallback:1995");
+    expect(cfg.baseUrl).toBe("http://env-fallback:1995/api/v1");
     delete process.env.EVERMEMOS_BASE_URL;
+  });
+
+  it("should reject baseUrl without versioned API path", () => {
+    expect(() => parseConfig({ baseUrl: "http://localhost:1995" })).toThrow(
+      "baseUrl must include a versioned API path",
+    );
+  });
+
+  it("should use EVERMEMOS_API_KEY env var as fallback", () => {
+    process.env.EVERMEMOS_API_KEY = "env-api-key";
+    const cfg = parseConfig({});
+    expect(cfg.apiKey).toBe("env-api-key");
+    delete process.env.EVERMEMOS_API_KEY;
+  });
+
+  it("should resolve env vars in apiKey", () => {
+    process.env.TEST_EVERMEMOS_API_KEY = "resolved-key";
+    const cfg = parseConfig({ apiKey: "${TEST_EVERMEMOS_API_KEY}" });
+    expect(cfg.apiKey).toBe("resolved-key");
+    delete process.env.TEST_EVERMEMOS_API_KEY;
   });
 
   it("should accept all valid retrieve methods", () => {

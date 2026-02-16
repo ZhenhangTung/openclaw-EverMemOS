@@ -30,6 +30,7 @@ type MemoryType = "episodic_memory" | "foresight" | "event_log" | "profile";
 
 type EverMemOSConfig = {
   baseUrl: string;
+  apiKey?: string;
   userId: string;
   groupId?: string;
   autoCapture: boolean;
@@ -104,6 +105,7 @@ type OpenClawPluginApi = {
 
 const ALLOWED_KEYS = [
   "baseUrl",
+  "apiKey",
   "userId",
   "groupId",
   "autoCapture",
@@ -139,7 +141,11 @@ function resolveEnvVars(value: string): string {
 }
 
 function parseConfig(raw: unknown): EverMemOSConfig {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (raw == null) {
+    raw = {};
+  }
+
+  if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("openclaw-evermemos config required");
   }
   const cfg = raw as Record<string, unknown>;
@@ -156,7 +162,28 @@ function parseConfig(raw: unknown): EverMemOSConfig {
     baseUrl = resolveEnvVars(cfg.baseUrl);
   } else {
     // Default to localhost
-    baseUrl = process.env.EVERMEMOS_BASE_URL || "http://localhost:1995";
+    baseUrl = process.env.EVERMEMOS_BASE_URL || "http://localhost:1995/api/v1";
+  }
+
+  let parsedBaseUrl: URL;
+  try {
+    parsedBaseUrl = new URL(baseUrl);
+  } catch {
+    throw new Error(`Invalid baseUrl: ${baseUrl}`);
+  }
+
+  if (!/\/api\/v\d+\/?$/.test(parsedBaseUrl.pathname)) {
+    throw new Error(
+      "baseUrl must include a versioned API path (e.g. http://localhost:1995/api/v1 or https://api.evermind.ai/api/v0)",
+    );
+  }
+
+  // API key is optional (required for cloud, optional for self-hosted)
+  let apiKey: string | undefined;
+  if (typeof cfg.apiKey === "string" && cfg.apiKey) {
+    apiKey = resolveEnvVars(cfg.apiKey);
+  } else if (process.env.EVERMEMOS_API_KEY) {
+    apiKey = process.env.EVERMEMOS_API_KEY;
   }
 
   // Retrieve method
@@ -185,6 +212,7 @@ function parseConfig(raw: unknown): EverMemOSConfig {
 
   return {
     baseUrl,
+    apiKey,
     userId: typeof cfg.userId === "string" && cfg.userId ? cfg.userId : "default",
     groupId: typeof cfg.groupId === "string" && cfg.groupId ? cfg.groupId : undefined,
     autoCapture: cfg.autoCapture !== false,
@@ -258,7 +286,7 @@ const evermemosPlugin = {
     async function getClient(): Promise<EverMemOSClient> {
       if (client) return client;
       const { EverMemOSClient: ClientClass } = await import("./client.js");
-      client = new ClientClass({ baseUrl: cfg.baseUrl });
+      client = new ClientClass({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey });
       return client;
     }
 

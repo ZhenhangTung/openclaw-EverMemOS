@@ -4,8 +4,14 @@
   "uiHints": {
     "baseUrl": {
       "label": "EverMemOS Server URL",
-      "placeholder": "http://localhost:1995",
-      "help": "Base URL of your EverMemOS server (supports ${EVERMEMOS_BASE_URL})"
+      "placeholder": "http://localhost:1995/api/v1",
+      "help": "Base URL of EverMemOS API. Self-hosted example: http://localhost:1995/api/v1. Cloud example: https://api.evermind.ai/api/v0 (supports ${EVERMEMOS_BASE_URL})"
+    },
+    "apiKey": {
+      "label": "API Key",
+      "placeholder": "",
+      "help": "Optional for self-hosted; required for cloud. Sent as Authorization: Bearer <api_key> (supports ${EVERMEMOS_API_KEY})",
+      "advanced": true
     },
     "userId": {
       "label": "Default User ID",
@@ -47,6 +53,9 @@
     "additionalProperties": false,
     "properties": {
       "baseUrl": {
+        "type": "string"
+      },
+      "apiKey": {
         "type": "string"
       },
       "userId": {
