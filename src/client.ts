@@ -127,7 +127,8 @@ export interface DeleteMemoriesResponse {
   status: string;
   message: string;
   result: {
-    deleted_count: number;
+    filters: string[];
+    count: number;
   };
 }
 

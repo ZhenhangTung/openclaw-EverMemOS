@@ -34,8 +34,9 @@ This plugin integrates EverMemOS as the memory layer for OpenClaw agents. Unlike
 ```
 
 1. **Auto-Recall** — Before the agent responds, the plugin searches EverMemOS for memories relevant to the current message and injects them into the agent's context
-2. **Auto-Capture** — After the agent responds, the exchange is sent to EverMemOS which extracts episodic memories, event logs, foresight predictions, and updates user profiles
+2. **Auto-Capture** — After the agent responds, the last user/assistant exchange is sent to EverMemOS which extracts episodic memories, event logs, foresight predictions, and updates user profiles
 3. **Agent Tools** — Five tools for explicit memory operations during conversations
+4. **Slash Commands** — `/remember` and `/recall` for quick manual memory operations
 
 ## Prerequisites
 
@@ -163,6 +164,13 @@ EverMemOS organizes memories into four types:
 | `hybrid` | Combined keyword + vector search |
 | `rrf` | Reciprocal Rank Fusion (keyword + vector + ranking fusion) |
 | `agentic` | LLM-guided multi-round intelligent retrieval |
+
+## Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/remember <text>` | Save something to EverMemOS memory |
+| `/recall <query>` | Search your memories and see results with relevance scores |
 
 ## CLI Commands
 

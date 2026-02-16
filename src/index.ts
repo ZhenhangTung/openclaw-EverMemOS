@@ -96,6 +96,16 @@ type OpenClawPluginApi = {
     handler: (event: unknown, ctx: unknown) => unknown,
     opts?: { priority?: number },
   ) => void;
+  registerCommand: (command: {
+    name: string;
+    description: string;
+    acceptsArgs?: boolean;
+    requireAuth?: boolean;
+    handler: (ctx: {
+      args?: string;
+      config: unknown;
+    }) => { text: string } | Promise<{ text: string }>;
+  }) => void;
   resolvePath: (input: string) => string;
 };
 
@@ -261,6 +271,9 @@ function flattenSearchResults(
 }
 
 /** Generate a unique message ID */
+
+/** Minimum text length to capture (skip very short messages) */
+const MIN_CAPTURE_TEXT_LENGTH = 10;
 function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -707,12 +720,12 @@ const evermemosPlugin = {
               content: [
                 {
                   type: "text",
-                  text: `Deleted ${result.result.deleted_count} memor${result.result.deleted_count === 1 ? "y" : "ies"}.`,
+                  text: `Deleted ${result.result.count} memor${result.result.count === 1 ? "y" : "ies"}.`,
                 },
               ],
               details: {
                 action: "deleted",
-                deleted_count: result.result.deleted_count,
+                deleted_count: result.result.count,
               },
             };
           } catch (err) {
@@ -835,7 +848,7 @@ const evermemosPlugin = {
     // Auto-recall: inject relevant memories before agent starts
     if (cfg.autoRecall) {
       api.on("before_agent_start", async (event: unknown, _ctx: unknown) => {
-        const ev = event as { prompt?: string };
+        const ev = event as { prompt?: string; messages?: unknown[] };
         if (!ev.prompt || ev.prompt.length < 5) return;
 
         try {
@@ -875,7 +888,10 @@ const evermemosPlugin = {
 
           return {
             prependContext:
-              `<relevant-memories>\nThe following memories from EverMemOS may be relevant to this conversation:\n${memoryContext}\n</relevant-memories>`,
+              `<relevant-memories>\nThe following memories from EverMemOS may be relevant to this conversation:\n` +
+              `${memoryContext}\n\n` +
+              `Use these memories naturally when relevant — including indirect connections — but don't force them into every response or make assumptions beyond what's stated.\n` +
+              `</relevant-memories>`,
           };
         } catch (err) {
           api.logger.warn(`openclaw-evermemos: recall failed: ${String(err)}`);
@@ -883,7 +899,7 @@ const evermemosPlugin = {
       });
     }
 
-    // Auto-capture: store conversation context after agent ends
+    // Auto-capture: store the last user/assistant turn after agent ends
     if (cfg.autoCapture) {
       api.on("agent_end", async (event: unknown, _ctx: unknown) => {
         const ev = event as {
@@ -895,9 +911,25 @@ const evermemosPlugin = {
 
         try {
           const c = await getClient();
-          const recentMessages = ev.messages.slice(-10);
 
-          for (const msg of recentMessages) {
+          // Extract only the last turn (last user message + following assistant messages)
+          const messages = ev.messages;
+          let lastUserIdx = -1;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (
+              msg &&
+              typeof msg === "object" &&
+              (msg as Record<string, unknown>).role === "user"
+            ) {
+              lastUserIdx = i;
+              break;
+            }
+          }
+          const lastTurn = lastUserIdx >= 0 ? messages.slice(lastUserIdx) : [];
+
+          let capturedCount = 0;
+          for (const msg of lastTurn) {
             if (!msg || typeof msg !== "object") continue;
             const msgObj = msg as Record<string, unknown>;
 
@@ -926,7 +958,7 @@ const evermemosPlugin = {
               }
             }
 
-            if (!textContent) continue;
+            if (!textContent || textContent.length < MIN_CAPTURE_TEXT_LENGTH) continue;
             // Skip injected memory context
             if (textContent.includes("<relevant-memories>")) continue;
 
@@ -938,16 +970,96 @@ const evermemosPlugin = {
               role: role as "user" | "assistant",
               group_id: cfg.groupId,
             });
+            capturedCount++;
           }
 
-          api.logger.info(
-            `openclaw-evermemos: auto-captured ${recentMessages.length} messages`,
-          );
+          if (capturedCount > 0) {
+            api.logger.info(
+              `openclaw-evermemos: auto-captured ${capturedCount} messages from last turn`,
+            );
+          }
         } catch (err) {
           api.logger.warn(`openclaw-evermemos: capture failed: ${String(err)}`);
         }
       });
     }
+
+    // ========================================================================
+    // Slash Commands
+    // ========================================================================
+
+    api.registerCommand({
+      name: "remember",
+      description: "Save something to EverMemOS memory",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        const text = ctx.args?.trim();
+        if (!text) {
+          return { text: "Usage: /remember <text to remember>" };
+        }
+
+        try {
+          const c = await getClient();
+          const result = await c.memorize({
+            message_id: generateMessageId(),
+            create_time: new Date().toISOString(),
+            sender: cfg.userId,
+            content: text,
+            role: "user",
+            group_id: cfg.groupId,
+          });
+
+          if (result.result.status_info === "extracted") {
+            return { text: `✅ Remembered: ${result.result.count} memor${result.result.count === 1 ? "y" : "ies"} extracted.` };
+          }
+          return { text: "✅ Message queued for memory extraction." };
+        } catch (err) {
+          return { text: `❌ Failed to remember: ${String(err)}` };
+        }
+      },
+    });
+
+    api.registerCommand({
+      name: "recall",
+      description: "Search your EverMemOS memories",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        const query = ctx.args?.trim();
+        if (!query) {
+          return { text: "Usage: /recall <search query>" };
+        }
+
+        try {
+          const c = await getClient();
+          const response = await c.searchMemories({
+            query,
+            user_id: cfg.userId,
+            group_id: cfg.groupId,
+            memory_types: cfg.memoryTypes,
+            top_k: cfg.topK,
+            retrieve_method: cfg.retrieveMethod,
+          });
+
+          const results = flattenSearchResults(
+            response.result.memories,
+            response.result.scores,
+          );
+
+          if (results.length === 0) {
+            return { text: "No relevant memories found." };
+          }
+
+          const lines = results.map(
+            (r, i) =>
+              `${i + 1}. [${r._type}] ${memoryToText(r)}${r._score != null ? ` (${(r._score * 100).toFixed(0)}%)` : ""}`,
+          );
+
+          return { text: `Found ${results.length} memories:\n\n${lines.join("\n")}` };
+        } catch (err) {
+          return { text: `❌ Recall failed: ${String(err)}` };
+        }
+      },
+    });
 
     // ========================================================================
     // Service
