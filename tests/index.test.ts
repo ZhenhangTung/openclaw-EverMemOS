@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseConfig, flattenSearchResults, memoryToText, generateMessageId } from "../src/index.js";
-import type { SearchMemoryGroup, MemoryItem } from "../src/client.js";
+import type { MemoryItem } from "../src/client.js";
 
 // ============================================================================
 // parseConfig tests
@@ -173,18 +173,14 @@ describe("flattenSearchResults", () => {
     expect(flattenSearchResults([])).toEqual([]);
   });
 
-  it("should flatten single group with single type", () => {
-    const groups: SearchMemoryGroup[] = [
-      {
-        episodic_memory: [
-          { summary: "Test memory", id: "1" },
-          { summary: "Another memory", id: "2" },
-        ],
-      },
+  it("should flatten memories with scores", () => {
+    const memories: MemoryItem[] = [
+      { summary: "Test memory", id: "1", memory_type: "episodic_memory" },
+      { summary: "Another memory", id: "2", memory_type: "episodic_memory" },
     ];
-    const scores = [{ episodic_memory: [0.95, 0.8] }];
+    const scores = [0.95, 0.8];
 
-    const result = flattenSearchResults(groups, scores);
+    const result = flattenSearchResults(memories, scores);
     expect(result).toHaveLength(2);
     expect(result[0]._type).toBe("episodic_memory");
     expect(result[0]._score).toBe(0.95);
@@ -193,32 +189,40 @@ describe("flattenSearchResults", () => {
     expect(result[1]._score).toBe(0.8);
   });
 
-  it("should flatten multiple groups with multiple types", () => {
-    const groups: SearchMemoryGroup[] = [
-      {
-        episodic_memory: [{ summary: "Episode 1", id: "1" }],
-        foresight: [{ foresight: "Prediction 1", id: "2" }],
-      },
-      {
-        event_log: [{ atomic_fact: "Fact 1", id: "3" }],
-      },
+  it("should include profiles from separate array", () => {
+    const memories: MemoryItem[] = [
+      { summary: "Episode 1", id: "1", memory_type: "episodic_memory" },
+    ];
+    const scores = [0.9];
+    const profiles = [
+      { category: "Preferences", description: "Likes coffee", score: 0.85 },
     ];
 
-    const result = flattenSearchResults(groups);
-    expect(result).toHaveLength(3);
+    const result = flattenSearchResults(memories, scores, profiles);
+    expect(result).toHaveLength(2);
     expect(result[0]._type).toBe("episodic_memory");
-    expect(result[1]._type).toBe("foresight");
-    expect(result[2]._type).toBe("event_log");
+    expect(result[1]._type).toBe("profile");
+    expect(result[1]._score).toBe(0.85);
   });
 
   it("should handle missing scores gracefully", () => {
-    const groups: SearchMemoryGroup[] = [
-      { episodic_memory: [{ summary: "Test", id: "1" }] },
+    const memories: MemoryItem[] = [
+      { summary: "Test", id: "1", memory_type: "episodic_memory" },
     ];
 
-    const result = flattenSearchResults(groups);
+    const result = flattenSearchResults(memories);
     expect(result).toHaveLength(1);
     expect(result[0]._score).toBeUndefined();
+  });
+
+  it("should default memory_type to episodic_memory", () => {
+    const memories: MemoryItem[] = [
+      { summary: "No type", id: "1" },
+    ];
+
+    const result = flattenSearchResults(memories);
+    expect(result).toHaveLength(1);
+    expect(result[0]._type).toBe("episodic_memory");
   });
 });
 

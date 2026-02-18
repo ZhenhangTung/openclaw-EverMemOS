@@ -228,14 +228,10 @@ describe("EverMemOSClient", () => {
         status: "ok",
         result: {
           memories: [
-            {
-              episodic_memory: [
-                { summary: "Discussed coffee", user_id: "user_123" },
-              ],
-            },
+            { summary: "Discussed coffee", user_id: "user_123", memory_type: "episodic_memory" },
           ],
-          scores: [{ episodic_memory: [0.95] }],
-          importance_scores: [0.85],
+          profiles: [],
+          scores: [0.95],
           total_count: 1,
           has_more: false,
           pending_messages: [],
@@ -252,7 +248,7 @@ describe("EverMemOSClient", () => {
       });
 
       expect(result.result.memories).toHaveLength(1);
-      expect(result.result.scores[0].episodic_memory[0]).toBe(0.95);
+      expect(result.result.scores[0]).toBe(0.95);
 
       const [url, options] = mockFetch.mock.calls[0] as [string, Record<string, unknown> | undefined];
       expect(url).toContain("/api/v1/memories/search?");
