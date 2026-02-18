@@ -95,9 +95,14 @@ export interface RetrieveMemRequest {
   radius?: number;
 }
 
-/** Search result memory group */
-export interface SearchMemoryGroup {
-  [memoryType: string]: MemoryItem[];
+/** Profile item returned by search */
+export interface ProfileItem {
+  category?: string;
+  description?: string;
+  item_type?: string;
+  trait_name?: string;
+  score?: number;
+  [key: string]: unknown;
 }
 
 /** GET /memories/search response */
@@ -105,12 +110,15 @@ export interface SearchMemResponse {
   status: string;
   message: string;
   result: {
-    memories: SearchMemoryGroup[];
-    scores: Array<Record<string, number[]>>;
-    importance_scores: number[];
+    memories: MemoryItem[];
+    profiles: ProfileItem[];
+    scores: number[];
     total_count: number;
     has_more: boolean;
     pending_messages: unknown[];
+    metadata?: Record<string, unknown>;
+    query_metadata?: Record<string, unknown>;
+    original_data?: unknown[];
   };
 }
 

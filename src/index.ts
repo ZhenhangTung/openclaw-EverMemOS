@@ -18,7 +18,7 @@ import { Type } from "@sinclair/typebox";
 import type {
   EverMemOSClient,
   MemoryItem,
-  SearchMemoryGroup,
+  ProfileItem,
 } from "./client.js";
 
 // ============================================================================
@@ -247,26 +247,34 @@ function memoryToText(item: MemoryItem): string {
   return JSON.stringify(item);
 }
 
-/** Flatten search result groups into a flat list of memories with types */
+/** Flatten search result into a flat list of memories with types and scores */
 function flattenSearchResults(
-  groups: SearchMemoryGroup[],
-  scores?: Array<Record<string, number[]>>,
-): Array<MemoryItem & { _type: string; _score?: number }> {
-  const results: Array<MemoryItem & { _type: string; _score?: number }> = [];
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    const scoreGroup = scores?.[i];
-    for (const [memType, memories] of Object.entries(group)) {
-      const typeScores = scoreGroup?.[memType];
-      for (let j = 0; j < memories.length; j++) {
-        results.push({
-          ...memories[j],
-          _type: memType,
-          _score: typeScores?.[j],
-        });
-      }
+  memories: MemoryItem[],
+  scores?: number[],
+  profiles?: ProfileItem[],
+): Array<(MemoryItem | ProfileItem) & { _type: string; _score?: number }> {
+  const results: Array<(MemoryItem | ProfileItem) & { _type: string; _score?: number }> = [];
+
+  if (memories) {
+    for (let i = 0; i < memories.length; i++) {
+      results.push({
+        ...memories[i],
+        _type: memories[i].memory_type || "episodic_memory",
+        _score: scores?.[i],
+      });
     }
   }
+
+  if (profiles) {
+    for (const profile of profiles) {
+      results.push({
+        ...profile,
+        _type: "profile",
+        _score: profile.score,
+      });
+    }
+  }
+
   return results;
 }
 
@@ -377,6 +385,7 @@ const evermemosPlugin = {
             const results = flattenSearchResults(
               response.result.memories,
               response.result.scores,
+              response.result.profiles,
             );
 
             if (results.length === 0) {
@@ -404,7 +413,7 @@ const evermemosPlugin = {
                   type: r._type,
                   text: memoryToText(r),
                   score: r._score,
-                  id: r.id,
+                  id: (r as MemoryItem).id,
                 })),
               },
             };
@@ -673,6 +682,7 @@ const evermemosPlugin = {
               const results = flattenSearchResults(
                 searchResponse.result.memories,
                 searchResponse.result.scores,
+                searchResponse.result.profiles,
               );
 
               if (results.length === 0) {
@@ -684,8 +694,10 @@ const evermemosPlugin = {
 
               const list = results
                 .map(
-                  (r) =>
-                    `- [${r._type}] ${memoryToText(r).slice(0, 80)}${memoryToText(r).length > 80 ? "..." : ""}${r.id ? ` (id: ${r.id})` : ""}`,
+                  (r) => {
+                    const id = (r as MemoryItem).id;
+                    return `- [${r._type}] ${memoryToText(r).slice(0, 80)}${memoryToText(r).length > 80 ? "..." : ""}${id ? ` (id: ${id})` : ""}`;
+                  },
                 )
                 .join("\n");
 
@@ -699,7 +711,7 @@ const evermemosPlugin = {
                 details: {
                   action: "candidates",
                   candidates: results.map((r) => ({
-                    id: r.id,
+                    id: (r as MemoryItem).id,
                     type: r._type,
                     text: memoryToText(r),
                     score: r._score,
@@ -777,6 +789,7 @@ const evermemosPlugin = {
               const results = flattenSearchResults(
                 response.result.memories,
                 response.result.scores,
+                response.result.profiles,
               );
 
               if (!results.length) {
@@ -788,7 +801,7 @@ const evermemosPlugin = {
                 type: r._type,
                 text: memoryToText(r),
                 score: r._score,
-                id: r.id,
+                id: (r as MemoryItem).id,
               }));
               console.log(JSON.stringify(output, null, 2));
             } catch (err) {
@@ -865,6 +878,7 @@ const evermemosPlugin = {
           const results = flattenSearchResults(
             response.result.memories,
             response.result.scores,
+            response.result.profiles,
           );
 
           if (results.length === 0) return;
@@ -1043,6 +1057,7 @@ const evermemosPlugin = {
           const results = flattenSearchResults(
             response.result.memories,
             response.result.scores,
+            response.result.profiles,
           );
 
           if (results.length === 0) {
