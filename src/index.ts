@@ -7,7 +7,7 @@
  *
  * Features:
  * - 5 tools: memory_search, memory_list, memory_store, memory_get, memory_forget
- * - Multi-modal memory types: episodic, event_log, foresight, profile
+ * - Multiple memory types: episodic, event_log, foresight, profile
  * - Smart retrieval: keyword (BM25), vector, hybrid, RRF, and agentic search
  * - Auto-recall: injects relevant memories before each agent turn
  * - Auto-capture: stores conversation context after each agent turn

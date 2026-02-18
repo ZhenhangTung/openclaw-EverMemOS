@@ -8,7 +8,7 @@ An [OpenClaw](https://github.com/openclaw/openclaw) plugin that adds long-term m
 
 This plugin integrates EverMemOS as the memory layer for OpenClaw agents. Unlike simple key-value memory stores, EverMemOS provides:
 
-- **Multi-modal memory types** — Episodic memories, event logs, foresight predictions, and user profiles
+- **Multiple memory types** — Episodic memories, event logs, foresight predictions, and user profiles
 - **Smart retrieval** — BM25 keyword search, vector semantic search, hybrid, RRF fusion, and LLM-guided agentic retrieval
 - **Structured extraction** — Automatically extracts structured memories from conversations with boundary detection
 - **Progressive profiles** — Builds and evolves user profiles over time from conversation patterns
@@ -70,7 +70,7 @@ curl http://localhost:1995/health
 ## Installation
 
 ```bash
-openclaw plugins install @evermemos/openclaw-evermemos
+openclaw plugins install @zhenhangtung/openclaw-evermemos
 ```
 
 ## Configuration
