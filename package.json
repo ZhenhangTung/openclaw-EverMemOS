@@ -1,0 +1,34 @@
+{
+  "name": "@zhenhangtung/openclaw-evermemos",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "EverMemOS memory backend for OpenClaw — long-term memory with structured extraction, intelligent retrieval, and progressive profile building",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "memory",
+    "evermemos",
+    "long-term-memory",
+    "episodic-memory"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "0.34.47"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
