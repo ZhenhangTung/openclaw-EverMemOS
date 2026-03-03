@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseConfig, flattenSearchResults, memoryToText, generateMessageId } from "../src/index.js";
+import evermemosPlugin from "../src/index.js";
 import type { MemoryItem } from "../src/client.js";
 
 // ============================================================================
@@ -240,5 +241,468 @@ describe("generateMessageId", () => {
   it("should start with msg_ prefix", () => {
     const id = generateMessageId();
     expect(id).toMatch(/^msg_/);
+  });
+});
+
+// ============================================================================
+// Plugin register: multi-user & group support tests
+// ============================================================================
+
+describe("evermemosPlugin.register – multi-user & group support", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let registeredTools: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let registeredHooks: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let registeredCommands: Record<string, any>;
+
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    registeredTools = {};
+    registeredHooks = {};
+    registeredCommands = {};
+    mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const mockApi = {
+      id: "openclaw-evermemos",
+      name: "Memory (EverMemOS)",
+      version: "0.1.0",
+      description: "test",
+      source: "test",
+      config: {},
+      pluginConfig: {
+        baseUrl: "http://localhost:1995/api/v1",
+        userId: "default_user",
+        groupId: "default_group",
+        autoCapture: false,
+        autoRecall: false,
+      },
+      runtime: {},
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registerTool: (tool: any, opts?: any) => {
+        registeredTools[opts?.name || tool.name] = tool;
+      },
+      registerCli: vi.fn(),
+      registerService: vi.fn(),
+      on: (hookName: string, handler: unknown) => {
+        registeredHooks[hookName] = handler;
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registerCommand: (command: any) => {
+        registeredCommands[command.name] = command;
+      },
+      resolvePath: (p: string) => p,
+    };
+
+    evermemosPlugin.register(mockApi as never);
+  });
+
+  it("should register all 5 tools", () => {
+    expect(registeredTools.memory_search).toBeDefined();
+    expect(registeredTools.memory_store).toBeDefined();
+    expect(registeredTools.memory_get).toBeDefined();
+    expect(registeredTools.memory_list).toBeDefined();
+    expect(registeredTools.memory_forget).toBeDefined();
+  });
+
+  it("memory_search tool should have groupId in parameters", () => {
+    const schema = registeredTools.memory_search.parameters;
+    expect(schema.properties.groupId).toBeDefined();
+  });
+
+  it("memory_store tool should have groupId in parameters", () => {
+    const schema = registeredTools.memory_store.parameters;
+    expect(schema.properties.groupId).toBeDefined();
+  });
+
+  it("memory_get tool should have groupId in parameters", () => {
+    const schema = registeredTools.memory_get.parameters;
+    expect(schema.properties.groupId).toBeDefined();
+  });
+
+  it("memory_list tool should have groupId in parameters", () => {
+    const schema = registeredTools.memory_list.parameters;
+    expect(schema.properties.groupId).toBeDefined();
+  });
+
+  it("memory_forget tool should have groupId in parameters", () => {
+    const schema = registeredTools.memory_forget.parameters;
+    expect(schema.properties.groupId).toBeDefined();
+  });
+
+  it("memory_search should use runtime userId and groupId over config defaults", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          result: {
+            memories: [],
+            profiles: [],
+            scores: [],
+            total_count: 0,
+            has_more: false,
+            pending_messages: [],
+          },
+        }),
+    });
+
+    await registeredTools.memory_search.execute("call1", {
+      query: "test",
+      userId: "runtime_user",
+      groupId: "runtime_group",
+    });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("user_id=runtime_user");
+    expect(url).toContain("group_id=runtime_group");
+  });
+
+  it("memory_search should fall back to config userId and groupId when not provided", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          result: {
+            memories: [],
+            profiles: [],
+            scores: [],
+            total_count: 0,
+            has_more: false,
+            pending_messages: [],
+          },
+        }),
+    });
+
+    await registeredTools.memory_search.execute("call1", { query: "test" });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("user_id=default_user");
+    expect(url).toContain("group_id=default_group");
+  });
+
+  it("memory_store should use runtime userId and groupId", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          message: "Extracted 1",
+          result: { saved_memories: [], count: 1, status_info: "extracted" },
+        }),
+    });
+
+    await registeredTools.memory_store.execute("call1", {
+      text: "some content to store",
+      userId: "runtime_user",
+      groupId: "runtime_group",
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.sender).toBe("runtime_user");
+    expect(body.group_id).toBe("runtime_group");
+  });
+
+  it("memory_get should use runtime userId and groupId", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          result: { memories: [], total_count: 0, has_more: false },
+        }),
+    });
+
+    await registeredTools.memory_get.execute("call1", {
+      userId: "runtime_user",
+      groupId: "runtime_group",
+    });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("user_id=runtime_user");
+    expect(url).toContain("group_id=runtime_group");
+  });
+
+  it("memory_list should use runtime groupId for all queries", async () => {
+    // mock 4 responses for each memory type
+    for (let i = 0; i < 4; i++) {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            status: "ok",
+            result: { memories: [], total_count: 0, has_more: false },
+          }),
+      });
+    }
+
+    await registeredTools.memory_list.execute("call1", {
+      userId: "runtime_user",
+      groupId: "runtime_group",
+    });
+
+    // All 4 fetch calls should use runtime_group
+    for (let i = 0; i < 4; i++) {
+      const url = mockFetch.mock.calls[i][0] as string;
+      expect(url).toContain("user_id=runtime_user");
+      expect(url).toContain("group_id=runtime_group");
+    }
+  });
+
+  it("memory_forget should use runtime groupId for deletion", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          message: "Deleted 1",
+          result: { filters: ["user_id"], count: 1 },
+        }),
+    });
+
+    await registeredTools.memory_forget.execute("call1", {
+      userId: "runtime_user",
+      groupId: "runtime_group",
+      eventId: "event_001",
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.user_id).toBe("runtime_user");
+    expect(body.group_id).toBe("runtime_group");
+  });
+
+  it("/remember command should use context userId and groupId", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          message: "Extracted 1",
+          result: { saved_memories: [], count: 1, status_info: "extracted" },
+        }),
+    });
+
+    await registeredCommands.remember.handler({
+      args: "I love running",
+      config: {},
+      userId: "cmd_user",
+      groupId: "cmd_group",
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.sender).toBe("cmd_user");
+    expect(body.group_id).toBe("cmd_group");
+  });
+
+  it("/recall command should use context userId and groupId", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          result: {
+            memories: [],
+            profiles: [],
+            scores: [],
+            total_count: 0,
+            has_more: false,
+            pending_messages: [],
+          },
+        }),
+    });
+
+    await registeredCommands.recall.handler({
+      args: "running",
+      config: {},
+      userId: "cmd_user",
+      groupId: "cmd_group",
+    });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("user_id=cmd_user");
+    expect(url).toContain("group_id=cmd_group");
+  });
+});
+
+// ============================================================================
+// Lifecycle hooks: multi-user & group support tests
+// ============================================================================
+
+describe("evermemosPlugin.register – lifecycle hooks with userId/groupId", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let registeredHooks: Record<string, any>;
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    registeredHooks = {};
+    mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const mockApi = {
+      id: "openclaw-evermemos",
+      name: "Memory (EverMemOS)",
+      version: "0.1.0",
+      description: "test",
+      source: "test",
+      config: {},
+      pluginConfig: {
+        baseUrl: "http://localhost:1995/api/v1",
+        userId: "config_user",
+        groupId: "config_group",
+        autoCapture: true,
+        autoRecall: true,
+      },
+      runtime: {},
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+      registerTool: vi.fn(),
+      registerCli: vi.fn(),
+      registerService: vi.fn(),
+      on: (hookName: string, handler: unknown) => {
+        registeredHooks[hookName] = handler;
+      },
+      registerCommand: vi.fn(),
+      resolvePath: (p: string) => p,
+    };
+
+    evermemosPlugin.register(mockApi as never);
+  });
+
+  it("should register before_agent_start and agent_end hooks", () => {
+    expect(registeredHooks.before_agent_start).toBeDefined();
+    expect(registeredHooks.agent_end).toBeDefined();
+  });
+
+  it("before_agent_start should use event userId and groupId over config", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          result: {
+            memories: [],
+            profiles: [],
+            scores: [],
+            total_count: 0,
+            has_more: false,
+            pending_messages: [],
+          },
+        }),
+    });
+
+    await registeredHooks.before_agent_start(
+      { prompt: "What did we discuss yesterday?", userId: "event_user", groupId: "event_group" },
+      {},
+    );
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("user_id=event_user");
+    expect(url).toContain("group_id=event_group");
+  });
+
+  it("before_agent_start should fall back to config userId and groupId", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          result: {
+            memories: [],
+            profiles: [],
+            scores: [],
+            total_count: 0,
+            has_more: false,
+            pending_messages: [],
+          },
+        }),
+    });
+
+    await registeredHooks.before_agent_start(
+      { prompt: "What did we discuss yesterday?" },
+      {},
+    );
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("user_id=config_user");
+    expect(url).toContain("group_id=config_group");
+  });
+
+  it("agent_end should use event userId and groupId for capture", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          message: "Extracted",
+          result: { saved_memories: [], count: 1, status_info: "extracted" },
+        }),
+    });
+
+    await registeredHooks.agent_end(
+      {
+        success: true,
+        userId: "event_user",
+        groupId: "event_group",
+        messages: [
+          { role: "user", content: "Tell me about my fitness plan and progress" },
+        ],
+      },
+      {},
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.sender).toBe("event_user");
+    expect(body.group_id).toBe("event_group");
+  });
+
+  it("agent_end should fall back to config userId and groupId", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          status: "ok",
+          message: "Extracted",
+          result: { saved_memories: [], count: 1, status_info: "extracted" },
+        }),
+    });
+
+    await registeredHooks.agent_end(
+      {
+        success: true,
+        messages: [
+          { role: "user", content: "Tell me about my fitness plan and progress" },
+        ],
+      },
+      {},
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.sender).toBe("config_user");
+    expect(body.group_id).toBe("config_group");
   });
 });
