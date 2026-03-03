@@ -335,6 +335,9 @@ const evermemosPlugin = {
           userId: Type.Optional(
             Type.String({ description: "User ID to scope search (default: configured userId)" }),
           ),
+          groupId: Type.Optional(
+            Type.String({ description: "Group ID to scope search (default: configured groupId)" }),
+          ),
           memoryTypes: Type.Optional(
             Type.Array(
               Type.Union([
@@ -361,12 +364,14 @@ const evermemosPlugin = {
             query,
             limit,
             userId,
+            groupId,
             memoryTypes,
             retrieveMethod,
           } = params as {
             query: string;
             limit?: number;
             userId?: string;
+            groupId?: string;
             memoryTypes?: MemoryType[];
             retrieveMethod?: RetrieveMethod;
           };
@@ -376,7 +381,7 @@ const evermemosPlugin = {
             const response = await c.searchMemories({
               query,
               user_id: userId || cfg.userId,
-              group_id: cfg.groupId,
+              group_id: groupId || cfg.groupId,
               memory_types: memoryTypes || cfg.memoryTypes,
               top_k: limit ?? cfg.topK,
               retrieve_method: retrieveMethod || cfg.retrieveMethod,
@@ -440,6 +445,9 @@ const evermemosPlugin = {
           userId: Type.Optional(
             Type.String({ description: "User ID (sender) for this memory" }),
           ),
+          groupId: Type.Optional(
+            Type.String({ description: "Group ID for this memory (default: configured groupId)" }),
+          ),
           role: Type.Optional(
             Type.Union([Type.Literal("user"), Type.Literal("assistant")], {
               description: "Role of the message sender (default: user)",
@@ -447,9 +455,10 @@ const evermemosPlugin = {
           ),
         }),
         async execute(_toolCallId, params) {
-          const { text, userId, role = "user" } = params as {
+          const { text, userId, groupId, role = "user" } = params as {
             text: string;
             userId?: string;
+            groupId?: string;
             role?: "user" | "assistant";
           };
 
@@ -462,7 +471,7 @@ const evermemosPlugin = {
               sender,
               content: text,
               role,
-              group_id: cfg.groupId,
+              group_id: groupId || cfg.groupId,
             });
 
             const statusInfo = result.result.status_info;
@@ -503,6 +512,9 @@ const evermemosPlugin = {
           userId: Type.Optional(
             Type.String({ description: "User ID (default: configured userId)" }),
           ),
+          groupId: Type.Optional(
+            Type.String({ description: "Group ID (default: configured groupId)" }),
+          ),
           memoryType: Type.Optional(
             Type.Union([
               Type.Literal("episodic_memory"),
@@ -516,8 +528,9 @@ const evermemosPlugin = {
           ),
         }),
         async execute(_toolCallId, params) {
-          const { userId, memoryType = "episodic_memory", limit = 20 } = params as {
+          const { userId, groupId, memoryType = "episodic_memory", limit = 20 } = params as {
             userId?: string;
+            groupId?: string;
             memoryType?: string;
             limit?: number;
           };
@@ -526,7 +539,7 @@ const evermemosPlugin = {
             const c = await getClient();
             const response = await c.fetchMemories({
               user_id: userId || cfg.userId,
-              group_id: cfg.groupId,
+              group_id: groupId || cfg.groupId,
               memory_type: memoryType,
               limit,
             });
@@ -576,16 +589,20 @@ const evermemosPlugin = {
           userId: Type.Optional(
             Type.String({ description: "User ID (default: configured userId)" }),
           ),
+          groupId: Type.Optional(
+            Type.String({ description: "Group ID (default: configured groupId)" }),
+          ),
           limit: Type.Optional(
             Type.Number({ description: "Maximum number of memories per type" }),
           ),
         }),
         async execute(_toolCallId, params) {
-          const { userId, limit = 20 } = params as { userId?: string; limit?: number };
+          const { userId, groupId, limit = 20 } = params as { userId?: string; groupId?: string; limit?: number };
 
           try {
             const c = await getClient();
             const uid = userId || cfg.userId;
+            const gid = groupId || cfg.groupId;
             const typesToQuery: MemoryType[] = ["episodic_memory", "event_log", "foresight", "profile"];
             const allMemories: Array<{ type: string; text: string }> = [];
 
@@ -593,7 +610,7 @@ const evermemosPlugin = {
               try {
                 const response = await c.fetchMemories({
                   user_id: uid,
-                  group_id: cfg.groupId,
+                  group_id: gid,
                   memory_type: memType,
                   limit,
                 });
@@ -646,6 +663,9 @@ const evermemosPlugin = {
           userId: Type.Optional(
             Type.String({ description: "User ID to delete memories for" }),
           ),
+          groupId: Type.Optional(
+            Type.String({ description: "Group ID to delete memories for (default: configured groupId)" }),
+          ),
           memoryType: Type.Optional(
             Type.Union([
               Type.Literal("episodic_memory"),
@@ -658,9 +678,10 @@ const evermemosPlugin = {
           ),
         }),
         async execute(_toolCallId, params) {
-          const { eventId, userId, memoryType, query } = params as {
+          const { eventId, userId, groupId, memoryType, query } = params as {
             eventId?: string;
             userId?: string;
+            groupId?: string;
             memoryType?: string;
             query?: string;
           };
@@ -673,7 +694,7 @@ const evermemosPlugin = {
               const searchResponse = await c.searchMemories({
                 query,
                 user_id: userId || cfg.userId,
-                group_id: cfg.groupId,
+                group_id: groupId || cfg.groupId,
                 memory_types: memoryType ? [memoryType] : cfg.memoryTypes,
                 top_k: 5,
                 retrieve_method: cfg.retrieveMethod,
@@ -724,7 +745,7 @@ const evermemosPlugin = {
             const result = await c.deleteMemories({
               event_id: eventId,
               user_id: userId || cfg.userId,
-              group_id: cfg.groupId,
+              group_id: groupId || cfg.groupId,
               memory_type: memoryType,
             });
 
@@ -861,15 +882,15 @@ const evermemosPlugin = {
     // Auto-recall: inject relevant memories before agent starts
     if (cfg.autoRecall) {
       api.on("before_agent_start", async (event: unknown, _ctx: unknown) => {
-        const ev = event as { prompt?: string; messages?: unknown[] };
+        const ev = event as { prompt?: string; messages?: unknown[]; userId?: string; groupId?: string };
         if (!ev.prompt || ev.prompt.length < 5) return;
 
         try {
           const c = await getClient();
           const response = await c.searchMemories({
             query: ev.prompt,
-            user_id: cfg.userId,
-            group_id: cfg.groupId,
+            user_id: ev.userId || cfg.userId,
+            group_id: ev.groupId || cfg.groupId,
             memory_types: cfg.memoryTypes,
             top_k: cfg.topK,
             retrieve_method: cfg.retrieveMethod,
@@ -919,12 +940,16 @@ const evermemosPlugin = {
         const ev = event as {
           messages?: unknown[];
           success?: boolean;
+          userId?: string;
+          groupId?: string;
         };
 
         if (!ev.success || !ev.messages || ev.messages.length === 0) return;
 
         try {
           const c = await getClient();
+          const senderId = ev.userId || cfg.userId;
+          const groupId = ev.groupId || cfg.groupId;
 
           // Extract only the last turn (last user message + following assistant messages)
           const messages = ev.messages;
@@ -979,10 +1004,10 @@ const evermemosPlugin = {
             await c.memorize({
               message_id: generateMessageId(),
               create_time: new Date().toISOString(),
-              sender: cfg.userId,
+              sender: senderId,
               content: textContent,
               role: role as "user" | "assistant",
-              group_id: cfg.groupId,
+              group_id: groupId,
             });
             capturedCount++;
           }
@@ -1007,7 +1032,8 @@ const evermemosPlugin = {
       description: "Save something to EverMemOS memory",
       acceptsArgs: true,
       handler: async (ctx) => {
-        const text = ctx.args?.trim();
+        const cmdCtx = ctx as { args?: string; config: unknown; userId?: string; groupId?: string };
+        const text = cmdCtx.args?.trim();
         if (!text) {
           return { text: "Usage: /remember <text to remember>" };
         }
@@ -1017,10 +1043,10 @@ const evermemosPlugin = {
           const result = await c.memorize({
             message_id: generateMessageId(),
             create_time: new Date().toISOString(),
-            sender: cfg.userId,
+            sender: cmdCtx.userId || cfg.userId,
             content: text,
             role: "user",
-            group_id: cfg.groupId,
+            group_id: cmdCtx.groupId || cfg.groupId,
           });
 
           if (result.result.status_info === "extracted") {
@@ -1038,7 +1064,8 @@ const evermemosPlugin = {
       description: "Search your EverMemOS memories",
       acceptsArgs: true,
       handler: async (ctx) => {
-        const query = ctx.args?.trim();
+        const cmdCtx = ctx as { args?: string; config: unknown; userId?: string; groupId?: string };
+        const query = cmdCtx.args?.trim();
         if (!query) {
           return { text: "Usage: /recall <search query>" };
         }
@@ -1047,8 +1074,8 @@ const evermemosPlugin = {
           const c = await getClient();
           const response = await c.searchMemories({
             query,
-            user_id: cfg.userId,
-            group_id: cfg.groupId,
+            user_id: cmdCtx.userId || cfg.userId,
+            group_id: cmdCtx.groupId || cfg.groupId,
             memory_types: cfg.memoryTypes,
             top_k: cfg.topK,
             retrieve_method: cfg.retrieveMethod,
