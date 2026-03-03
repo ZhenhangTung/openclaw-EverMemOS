@@ -132,6 +132,38 @@ Add to your `openclaw.json`:
 }
 ```
 
+## Multi-User & Group Memory
+
+The plugin supports multi-user group chat scenarios (e.g., Feishu/Lark group chats shared between multiple users). `userId` and `groupId` can be provided at runtime on each tool call, lifecycle hook event, and slash command — they are not limited to static config values.
+
+### Tool calls with per-request scoping
+
+```typescript
+// Scope a search to a specific user in a specific group
+memory_search({ query: "workout plan", userId: "trainee_001", groupId: "fitness_chat_42" })
+
+// Store a message from a particular group member
+memory_store({ text: "...", userId: "trainer_001", groupId: "fitness_chat_42" })
+```
+
+All tools fall back to the configured `userId`/`groupId` when the runtime parameters are omitted.
+
+### Lifecycle hooks
+
+The `before_agent_start` and `agent_end` events can carry `userId` and `groupId` to scope recall and capture per session:
+
+```typescript
+// before_agent_start event
+{ prompt: "...", userId: "trainee_001", groupId: "fitness_chat_42" }
+
+// agent_end event
+{ success: true, userId: "trainee_001", groupId: "fitness_chat_42", messages: [...] }
+```
+
+### Slash commands
+
+`/remember` and `/recall` read `userId`/`groupId` from the command context when available, enabling the same commands to work correctly across different users in a shared group.
+
 ## Agent Tools
 
 The agent gets five tools it can call during conversations:
@@ -143,6 +175,18 @@ The agent gets five tools it can call during conversations:
 | `memory_get` | Retrieve memories for a user by memory type |
 | `memory_list` | List all stored memories across all memory types |
 | `memory_forget` | Delete memories by event ID, user ID, or search query |
+
+### Tool Parameters
+
+All tools accept optional `userId` and `groupId` parameters to override the configured defaults at call time:
+
+| Tool | Key Parameters |
+|------|----------------|
+| `memory_search` | `query`, `userId`, `groupId`, `limit`, `memoryTypes`, `retrieveMethod` |
+| `memory_store` | `text`, `userId`, `groupId`, `role` |
+| `memory_get` | `userId`, `groupId`, `memoryType`, `limit` |
+| `memory_list` | `userId`, `groupId`, `limit` |
+| `memory_forget` | `userId`, `groupId`, `eventId`, `memoryType`, `query` |
 
 ### Memory Types
 
